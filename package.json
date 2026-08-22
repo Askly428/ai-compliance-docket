@@ -1,0 +1,13 @@
+{
+  "name": "ai-compliance-docket",
+  "version": "0.1.0",
+  "description": "Multi-tenant AI regulatory compliance tracker for California AI statutes",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {}
+}
