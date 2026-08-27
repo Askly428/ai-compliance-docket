@@ -10,6 +10,9 @@ let state = {
   error: null,
   reportOpen: false,
   auditLog: null,
+  showPassword: false,
+  filter: "all", // all | overdue | compliant | na
+  onboardingDismissed: localStorage.getItem("onboardingDismissed") === "1",
 };
 
 async function api(path, opts = {}) {
@@ -70,21 +73,48 @@ function renderAuth() {
         <form id="auth-form">
           ${isSignup ? `<div class="field"><label>Company name</label><input name="companyName" required /></div>` : ""}
           <div class="field"><label>Email</label><input name="email" type="email" required /></div>
-          <div class="field"><label>Password</label><input name="password" type="password" required minlength="8" /></div>
-          <button class="btn-primary" type="submit">${isSignup ? "Create account" : "Sign in"}</button>
+          <div class="field">
+            <label>Password</label>
+            <div class="password-wrap">
+              <input name="password" id="password-input" type="${state.showPassword ? "text" : "password"}" required minlength="8" />
+              <button type="button" class="eye-toggle" id="eye-toggle">${state.showPassword ? "🙈" : "👁"}</button>
+            </div>
+            ${!isSignup ? `<div class="forgot-link"><a id="forgot-link">Forgot password?</a></div>` : ""}
+          </div>
+          <button class="btn-auth" type="submit">${isSignup ? "Create account" : "Sign in"}</button>
         </form>
         ${state.error ? `<div class="error-msg">${state.error}</div>` : ""}
         <div class="switch-link">
           ${isSignup ? `Already have an account? <a id="switch">Sign in</a>` : `New here? <a id="switch">Create an account</a>`}
         </div>
+        <p class="legal-disclaimer auth-disclaimer">Not legal advice — a tool for tracking compliance progress, not a substitute for a licensed attorney.</p>
       </div>
     </div>
   `;
   document.getElementById("switch").onclick = () => {
     state.view = isSignup ? "login" : "signup";
     state.error = null;
+    state.showPassword = false;
     render();
   };
+  document.getElementById("eye-toggle").onclick = () => {
+    state.showPassword = !state.showPassword;
+    const input = document.getElementById("password-input");
+    const caret = input.selectionStart;
+    render();
+    const newInput = document.getElementById("password-input");
+    newInput.focus();
+    newInput.setSelectionRange(caret, caret);
+  };
+  const forgotLink = document.getElementById("forgot-link");
+  if (forgotLink) {
+    forgotLink.onclick = () => {
+      showModal(
+        "Reset your password",
+        `<p style="font-size:13px;color:var(--slate);line-height:1.5;">Password reset isn't wired up yet in this early version. For now, reach out directly and we'll help you get back in.</p>`
+      );
+    };
+  }
   document.getElementById("auth-form").onsubmit = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -125,26 +155,52 @@ function renderDashboard() {
       </div>
     </div>
     <div class="page-inner page">
+      ${!state.onboardingDismissed ? `
+      <div class="onboarding-card">
+        <h3>Getting started</h3>
+        <ol>
+          <li>Check the boxes below that describe your company — that decides which laws actually apply to you.</li>
+          <li>Open each applicable statute card and work through its checklist as you complete each requirement.</li>
+          <li>Once you're ready, generate a compliance report to share or keep on file.</li>
+        </ol>
+        <span class="onboarding-dismiss" id="dismiss-onboarding">Got it, hide this</span>
+      </div>
+      ` : ""}
+
       <div class="profile-card">
         <div>
           <span class="eyebrow">Company Profile</span>
+          <div class="profile-hint">Tap any box to update — this determines which statutes below apply to you.</div>
           ${["genai:We build or operate a generative AI system", "genai1m:That system has 1M+ monthly users in California", "frontier:We develop frontier-scale models", "admt:We use automated decisions for significant consumer outcomes"]
             .map((item) => {
               const [key, label] = item.split(":");
-              return `<label class="check-row"><input type="checkbox" data-profile="${key}" ${d.company[key] ? "checked" : ""}/> ${label}</label>`;
+              return `<label class="check-row"><input type="checkbox" data-profile="${key}" ${d.company[key] ? "checked" : ""}/> ${label} <span class="tap-hint">tap to toggle</span></label>`;
             })
             .join("")}
         </div>
         <div class="score-panel">
           <span class="eyebrow" style="color:var(--slate)">Overall Readiness</span>
-          <div class="score-value" style="color:${d.overallScore === 100 ? "var(--green)" : "var(--ink)"}">${d.overallScore}%</div>
+          <div class="score-with-ring">
+            <svg class="progress-ring" width="72" height="72" viewBox="0 0 72 72">
+              <circle cx="36" cy="36" r="30" fill="none" stroke="rgba(28,34,48,0.15)" stroke-width="7" />
+              <circle cx="36" cy="36" r="30" fill="none" stroke="${d.overallScore === 100 ? "#3F6B4F" : "#B8873B"}" stroke-width="7"
+                stroke-linecap="round" stroke-dasharray="${2 * Math.PI * 30}" stroke-dashoffset="${2 * Math.PI * 30 * (1 - d.overallScore / 100)}"
+                transform="rotate(-90 36 36)" />
+            </svg>
+            <div class="score-value" style="color:${d.overallScore === 100 ? "var(--green)" : "var(--ink)"}">${d.overallScore}%</div>
+          </div>
           <div class="score-sub">${d.regulations.filter((r) => r.applies).length} statute(s) in scope</div>
         </div>
       </div>
 
       <div>
         <span class="eyebrow" style="color:var(--slate-light);display:block;margin-bottom:10px;">Active Docket</span>
-        ${d.regulations.map(renderRegCard).join("")}
+        <div class="filter-tabs">
+          ${[["all", "All"], ["overdue", "Overdue"], ["compliant", "Compliant"], ["na", "N/A"]]
+            .map(([key, label]) => `<button class="filter-tab ${state.filter === key ? "active" : ""}" data-filter="${key}">${label}</button>`)
+            .join("")}
+        </div>
+        ${filterRegulations(d.regulations, state.filter).map(renderRegCard).join("") || `<div style="color:var(--slate-light);font-size:13px;padding:20px 0;">No statutes match this filter.</div>`}
       </div>
 
       <div>
@@ -162,10 +218,26 @@ function renderDashboard() {
         <button class="btn-ghost" id="audit-btn">View Audit Log</button>
         <button class="btn-primary" style="width:auto;margin-top:0;" id="report-btn">Generate Compliance Report</button>
       </div>
+
+      <p class="legal-disclaimer">This tool tracks self-reported compliance progress and generates an audit trail. It does not provide legal advice and is not a substitute for review by a licensed attorney.</p>
     </div>
   `;
 
   document.getElementById("signout").onclick = logout;
+  const dismissEl = document.getElementById("dismiss-onboarding");
+  if (dismissEl) {
+    dismissEl.onclick = () => {
+      state.onboardingDismissed = true;
+      localStorage.setItem("onboardingDismissed", "1");
+      render();
+    };
+  }
+  document.querySelectorAll("[data-filter]").forEach((el) => {
+    el.onclick = () => {
+      state.filter = el.getAttribute("data-filter");
+      render();
+    };
+  });
   document.querySelectorAll("[data-profile]").forEach((el) => {
     el.onchange = async (e) => {
       const key = e.target.getAttribute("data-profile");
@@ -181,6 +253,25 @@ function renderDashboard() {
       const id = el.getAttribute("data-toggle");
       state.expanded = state.expanded === id ? null : id;
       render();
+    };
+  });
+  document.querySelectorAll("[data-open-checklist]").forEach((el) => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      state.expanded = el.getAttribute("data-open-checklist");
+      render();
+    };
+  });
+  document.querySelectorAll("[data-fix]").forEach((el) => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const id = el.getAttribute("data-fix");
+      state.expanded = id;
+      render();
+      setTimeout(() => {
+        const firstUnchecked = document.querySelector(`#reg-${id} input[type="checkbox"]:not(:checked)`);
+        if (firstUnchecked) firstUnchecked.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 50);
     };
   });
   document.querySelectorAll("[data-req]").forEach((el) => {
@@ -207,10 +298,18 @@ function renderDashboard() {
   };
 }
 
+function filterRegulations(regulations, filter) {
+  if (filter === "all") return regulations;
+  if (filter === "overdue") return regulations.filter((r) => r.status === "overdue");
+  if (filter === "compliant") return regulations.filter((r) => r.status === "compliant");
+  if (filter === "na") return regulations.filter((r) => r.status === "not-applicable");
+  return regulations;
+}
+
 function renderRegCard(reg) {
   const open = state.expanded === reg.id;
   return `
-    <div class="docket-card ${reg.applies ? "" : "na"}">
+    <div class="docket-card ${reg.applies ? "" : "na"}" id="reg-${reg.id}">
       <div class="docket-head" ${reg.applies ? `data-toggle="${reg.id}"` : ""}>
         <div style="flex:1;min-width:0;">
           <div>
@@ -220,8 +319,18 @@ function renderRegCard(reg) {
           <div class="docket-meta">Effective ${new Date(reg.effective_date).toDateString()} · ${daysLabel(reg.daysUntil)} · ${reg.penalty}</div>
           ${reg.applies ? `<div class="progress-track"><div class="progress-fill" style="width:${reg.pct}%;background:${barColor(reg.status)}"></div></div>` : ""}
         </div>
-        <div class="stamp ${statusClass(reg.status)}">${statusLabel(reg.status)}</div>
+        ${reg.status === "not-applicable"
+          ? `<div class="na-tag">Not applicable</div>`
+          : `<div class="stamp ${statusClass(reg.status)}">${statusLabel(reg.status)}</div>`}
       </div>
+      ${
+        reg.applies
+          ? `<div class="card-actions" style="padding:0 18px 16px;">
+              <button class="card-action-btn" data-open-checklist="${reg.id}">View Checklist</button>
+              ${reg.status !== "compliant" ? `<button class="card-action-btn fix" data-fix="${reg.id}">Fix Compliance</button>` : ""}
+            </div>`
+          : ""
+      }
       ${
         reg.applies && open
           ? `<div class="docket-body">
