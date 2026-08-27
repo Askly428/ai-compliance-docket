@@ -429,6 +429,10 @@ const server = http.createServer(async (req, res) => {
         reg.requirements.forEach((r) => lines.push(`  [${r.checked ? "x" : " "}] ${r.text}`));
         lines.push("");
       });
+      lines.push("---");
+      lines.push("This report tracks self-reported checklist progress and does not constitute legal advice.");
+      lines.push("It is not a substitute for review by a licensed attorney. Consult qualified counsel to");
+      lines.push("confirm your obligations under applicable law.");
       res.writeHead(200, { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" });
       return res.end(lines.join("\n"));
     }
